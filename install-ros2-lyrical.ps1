@@ -60,7 +60,9 @@ $Distro       = 'lyrical'
 $RosDir       = Join-Path $InstallRoot $Distro
 $DownloadDir  = Join-Path $InstallRoot 'downloads'
 $ReleasesApi  = 'https://api.github.com/repos/ros2/ros2/releases?per_page=100'
-$AssetPattern = '^ros2-lyrical-.*windows-release-amd64\.zip$'
+# Older distros: ros2-<distro>-YYYYMMDD-windows-release-amd64.zip
+# Lyrical:       ros2-lyrical-YYYY-MM-DD-windows-AMD64.zip   (-match is case-insensitive)
+$AssetPattern = '^ros2-lyrical-.*windows-(release-)?amd64\.zip$'
 
 function Write-Step([string]$msg) { Write-Host ""; Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok([string]$msg)   { Write-Host "    [ok] $msg" -ForegroundColor Green }
@@ -220,14 +222,19 @@ $envBat = @"
 @echo off
 rem Sources the pixi environment and ROS 2 $Distro into the current Command Prompt.
 rem Usage:  call "$RosDir\ros2_env.bat"
+rem The hook file name is unique per call so that terminals started at the same time don't overwrite each other's file.
+set "ROS2_PIXI_HOOK=%TEMP%\ros2_${Distro}_pixi_hook_%RANDOM%%RANDOM%.bat"
 pushd "$RosDir"
-pixi shell-hook -s cmd > "%TEMP%\ros2_${Distro}_pixi_hook.bat"
+pixi shell-hook -s cmd > "%ROS2_PIXI_HOOK%"
 if errorlevel 1 (
   echo [ros2_env] pixi shell-hook failed. Is pixi on PATH?
+  del "%ROS2_PIXI_HOOK%" 2>nul
   popd
   exit /b 1
 )
-call "%TEMP%\ros2_${Distro}_pixi_hook.bat"
+call "%ROS2_PIXI_HOOK%"
+del "%ROS2_PIXI_HOOK%" 2>nul
+set "ROS2_PIXI_HOOK="
 popd
 call "$RosDir\local_setup.bat"
 "@
@@ -268,7 +275,8 @@ if ($SkipTest) {
     $listLog  = Join-Path $logDir 'listener.log'
     $envCall  = "call `"$RosDir\ros2_env.bat`""
     $talker   = Start-Process cmd.exe -ArgumentList "/c $envCall && ros2 run demo_nodes_cpp talker > `"$talkLog`" 2>&1" -WindowStyle Hidden -PassThru
-    $listener = Start-Process cmd.exe -ArgumentList "/c $envCall && ros2 run demo_nodes_py listener > `"$listLog`" 2>&1" -WindowStyle Hidden -PassThru
+    Start-Sleep -Seconds 5   # let the talker finish activating before the listener starts
+    $listener =Start-Process cmd.exe -ArgumentList "/c $envCall && ros2 run demo_nodes_py listener > `"$listLog`" 2>&1" -WindowStyle Hidden -PassThru
 
     $heard = $false
     for ($i = 0; $i -lt 45 -and -not $heard; $i++) {
@@ -276,7 +284,12 @@ if ($SkipTest) {
         if ((Test-Path $listLog) -and (Select-String -Path $listLog -Pattern 'I heard' -Quiet)) { $heard = $true }
     }
     foreach ($p in @($talker, $listener)) {
-        if (-not $p.HasExited) { & taskkill.exe /PID $p.Id /T /F *> $null }
+        # taskkill may report that an already-exited child "could not be terminated"; that is harmless,
+        # but under $ErrorActionPreference = 'Stop' its stderr would abort the script, so ignore it here.
+        if (-not $p.HasExited) {
+            $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            try { & taskkill.exe /PID $p.Id /T /F *> $null } catch { } finally { $ErrorActionPreference = $prevEap }
+        }
     }
 
     if ($heard) {
