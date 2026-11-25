@@ -24,7 +24,7 @@ No administrator rights are needed.
 | Check the OS | System requirements | Warns if the PC isn't running Windows 11 x64 |
 | Create `C:\dev` | Create a location | Change it with `-InstallRoot` (keep it short) |
 | Install [pixi](https://pixi.sh) | Install pixi | Only if missing; asks first; installs for your user only |
-| Download the newest `ros2-lyrical-*-windows-release-amd64.zip` | Install ROS 2 | Picks the newest non-beta release from [ros2/ros2 releases](https://github.com/ros2/ros2/releases) |
+| Download the newest `ros2-lyrical-*-windows-AMD64.zip` | Install ROS 2 | Picks the newest non-beta release from [ros2/ros2 releases](https://github.com/ros2/ros2/releases) |
 | Extract it to `C:\dev\lyrical` | Install ROS 2 | Uses Windows' built-in `tar.exe` |
 | `pixi install` | Install Pixi dependencies | |
 | `pixi run python preinstall_setup_windows.py` | Run preinstall script | |
@@ -61,6 +61,9 @@ colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 ## Troubleshooting
 
 - **A warning that RTI Connext DDS is missing** is normal.
+- **Python nodes under `ros2 launch`:** their log lines don't appear in the launch terminal, and when two start close
+  together one sometimes exits during startup (exit code 1 or 3221225477). ROS's own Python demo nodes do the same;
+  C++ nodes and `ros2 run` aren't affected. Changing the middleware to Cyclone DDS didn't help in testing.
 - **Windows Defender / SmartScreen** may flag the conda-forge/pixi install. As the official guide notes, choose *More info → Run anyway*.
 - **A Windows Firewall prompt** may appear on the first demo run. Allow access on private networks, then re-run.
 - **The demo check fails:** read `C:\dev\logs\talker.log` and `C:\dev\logs\listener.log`.
